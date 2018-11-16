@@ -57,7 +57,7 @@ def plot_all_epsilons(scores, baseline, eps_range, dims=None, figsize=(15, 15), 
     plt.rc('text', usetex=True)
 
     for eps in eps_range:
-        means = np.mean(scores[eps])
+        means = scores[eps]
         ax = f.add_subplot(4, 2, index)
         ax.plot(dims, means)
         ax.plot(dims, baselines)
