@@ -200,26 +200,29 @@ for v in real_gdv[:5]:
 k_point = gdv[-1]
 
 lcv = []
-# THE SIZE OF LCV IS THE NUM OF CLASSES
-# In this case len(lcv) = 2
+
+# lcv_i is a tuple -> lcv_i(class_index) += 1
+node_idx = 0
 for local_knn in local_knn_classifiers:
-    node_idx = local_knn_classifiers.index(local_knn)
-    lcv_i = []
+
+    lcv_i = [0, 0]
 
     ldv_i = local_knn.kneighbors(x_test_sample, n_neighbors=k)
     # from the paper isn't very clear. My interpretation: find all points that are in the radius of the k-th points
     dists = ldv_i[0].flatten()
     ids = ldv_i[1].flatten()
 
+    dist_id = 0
     for dist in dists:
         if dist <= k_point:
-            idx = dists.tolist().index(dist)
+            idx = ids[dist_id]
             cl = y_split[node_idx][idx]
-            print(cl, ids[idx], node_idx)
-            # lcv_i.append((dist, cl, ids[idx])) # i think i need only the class value
-            lcv_i.append(cl)
+            print(node_idx, idx, cl)
+            lcv_i[cl] += 1
+        dist_id += 1
 
     lcv.append(lcv_i)
+    node_idx += 1
 
 # in this case we have that node 0 doesn't have any point in lcv. So he knows that the other nodes have all the
 # other distances. But i think this is part of the algorithm, since the global distances vector is public and
@@ -229,7 +232,7 @@ for local_knn in local_knn_classifiers:
 # i.e. every node has more or less the same power in deciding the classification of a test point.
 
 # let's say the random values are known only to a trusted third party
-random_values = np.random.randint(100, size=k)
+random_values = np.random.randint(100, size=2)
 
 gcv = np.copy(random_values)
 
@@ -247,7 +250,12 @@ for lcv_i in lcv:
 
 print('final gcv (what the final node sees) ', gcv)
 print('random values ', random_values)
-print('real gcv ', gcv - random_values)
+real_gcv = gcv - random_values
+print('real gcv ', real_gcv)
+
+cls = np.argmax(real_gcv)
+print('REAL CLASS: %d\n'
+      'KNN CLASS: %d' %(y_test_sample, np.argmax(real_gcv)))
 
 # Each node assigns the classification to the sample as classification(x) = arg max gcv(i)
 
