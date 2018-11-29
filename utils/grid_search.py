@@ -5,7 +5,13 @@ from sklearn.preprocessing import StandardScaler
 SVM_PARAMS = {'kernel': ['linear', 'rbf', 'sigmoid', 'poly'], 'shrinking': [True, False], 'probability': [True, False],
               'C': [0.01, 0.1, 1.0, 10.0], 'gamma': ['scale', 0.1, 0.01]}
 
-KNN_PARAMS = {'n_neighbors': [7, 9, 11, 15, 25, 49, 75, 99], 'weights': ['uniform', 'distance'],
+
+
+#in order to avoid ValueError: Expected n_neighbors <= n_samples,  but n_samples = 50, n_neighbors = 75
+# remove n_neighbors = [75, 99]
+# n_neighbors = [7, 9, 11, 15, 25, 47] -> k should be fixed for private_knn
+
+KNN_PARAMS = {'n_neighbors': [5], 'weights': ['uniform', 'distance'],
               'algorithm': ['auto', 'ball_tree', 'kd_tree', 'brute'], 'leaf_size': [30, 60, 90, 15], 'p': [1, 2]}
 
 
