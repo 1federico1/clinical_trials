@@ -37,7 +37,8 @@ def knearest_global_knn(node_idx_curr, node_idx_prev, round, ldv, gdv, p0=1.0, d
     gdv_prev = gdv[node_idx_prev]
 
     stack = np.hstack((curr_top_k, gdv_prev))
-    stack[::-1].sort()
+    # stack[::-1].sort()
+    stack.sort()
     curr_top_k = stack[:k]
 
     # compute sub-vector that contains the values of curr_top_k that contribute to the current topk vector
@@ -63,7 +64,7 @@ def knearest_global_knn(node_idx_curr, node_idx_prev, round, ldv, gdv, p0=1.0, d
             end = gdv_prev[k - m]  # k - m th item
             # res = res.tolist()
             for _ in range(m):
-                rand = np.random.uniform(start, end)
+                rand = np.random.uniform(low=start, high=end)
                 res.append(rand)
             return sorted(res)
 
@@ -218,7 +219,7 @@ def test_knn(p0=1.0, d=0.75, rounds=10, k=5, n=3):
     x, y = heart_disease()
     # x, y = datasets.load_breast_cancer(return_X_y=True)
     # x, y = abalone()
-    x = MinMaxScaler().fit_transform(x)
+    # x = MinMaxScaler().fit_transform(x)
     randomize = np.random.permutation(len(x))
     x = x[randomize]
     y = y[randomize]
@@ -267,7 +268,7 @@ def test_knn(p0=1.0, d=0.75, rounds=10, k=5, n=3):
             ldv_i = node_knn.kneighbors(x_test_sample, n_neighbors=k)[0]
             ldv.append(ldv_i)
 
-        gdv = [[np.random.uniform() for _ in range(k + 1)]]
+        gdv = [[np.random.uniform(10, 50) for _ in range(k)]]
 
         for r in range(rounds):
 
@@ -313,9 +314,9 @@ def test_knn(p0=1.0, d=0.75, rounds=10, k=5, n=3):
 
         real_gdv = np.array(real_gdv).flatten()
         real_gdv.sort()
-        real_gdv = true_knn.kneighbors(x_test_sample, n_neighbors=k)
+        # real_gdv = true_knn.kneighbors(x_test_sample, n_neighbors=k)
         if DEBUG:
-            print('REAL TOP K DISTANCES ', real_gdv)
+            print('REAL TOP K DISTANCES ', real_gdv[:k])
             print('GLOBAL DISTANCE VECTOR ', gdv)
 
         k_point = gdv[-1]
@@ -583,7 +584,7 @@ def test(p0=1.0, d=0.75, rounds=10, k=5):
 PS = np.arange(0.1, 1.1, 0.1)
 DS = np.arange(0.1, 1.1, 0.1)
 ROUNDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-DEBUG = False
+DEBUG = True
 
 scores = defaultdict(list)
 
@@ -591,10 +592,11 @@ p = 1.0
 d = 0.25
 
 NODES = [3, 4, 5, 6, 7, 8, 9, 10]
-NEIGHBORS = [3,5,7,9,11,13,15]
+NEIGHBORS = [3, 5, 7, 9, 11, 13, 15]
 baselines = defaultdict(list)
 rounds = {}
-score, true_pred = test_knn(p0=p, d=d, rounds=1, k=5, n=3)
+score, true_pred = test_knn(p0=p, d=d, rounds=3
+                            , k=1, n=3)
 print('baseline', true_pred)
 print('private knn', score)
 
@@ -603,8 +605,8 @@ def smc_plot():
     for n in ROUNDS:
         print(n)
         for _ in range(100):
-            score, true_pred = test_knn(p0=p, d=d, rounds= n, k=5, n=3)
-            diff = abs(true_pred - score) # in the paper they measure ABSOLUTE difference
+            score, true_pred = test_knn(p0=p, d=d, rounds=n, k=5, n=3)
+            diff = abs(true_pred - score)  # in the paper they measure ABSOLUTE difference
             scores[n].append(diff)
             baselines[n].append(true_pred)
 
@@ -623,4 +625,4 @@ def smc_plot():
 def plot_together():
     scores = pickle.load(open('smc_scores_rounds_p10_d025'))
 
-smc_plot()
+# smc_plot()
