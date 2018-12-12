@@ -14,7 +14,7 @@ import random
 from sklearn import datasets, metrics
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from utils import plot
 from utils.datasets import heart_disease, skin_noskin, abalone
 from utils.grid_search import grid_search, KNN_PARAMS
@@ -37,8 +37,8 @@ def knearest_global_knn(node_idx_curr, node_idx_prev, round, ldv, gdv, p0=1.0, d
     gdv_prev = gdv[node_idx_prev]
 
     stack = np.hstack((curr_top_k, gdv_prev))
-    # stack[::-1].sort()
-    stack.sort()
+    stack[::-1].sort()
+    # stack.sort()
     curr_top_k = stack[:k]
 
     # compute sub-vector that contains the values of curr_top_k that contribute to the current topk vector
@@ -204,6 +204,132 @@ baseline = metrics.balanced_accuracy_score(y_test, y_pred_baseline)
 # Note that vectors are already sorted, so the topk of each node are the first k
 
 
+def lap_knn(n=3, k=5, eps=1.0):
+    x, y = heart_disease()
+    # x, y = datasets.load_breast_cancer(return_X_y=True)
+    # x, y = abalone()
+    # x = MinMaxScaler().fit_transform(x)
+    # x = StandardScaler().fit_transform(x)
+    randomize = np.random.permutation(len(x))
+    x = x[randomize]
+    y = y[randomize]
+    x = np.squeeze(x)
+    y = np.squeeze(y)
+
+    x_split = np.array_split(x, n + 1)
+    y_split = np.array_split(y, n + 1)
+
+    x_test_dataset = x_split[n]
+    y_test_dataset = y_split[n]
+
+    true_knn = KNeighborsClassifier(n_neighbors=k)
+    true_x = []
+    true_y = []
+    for node_idx in range(n):
+        local_data = x_split[node_idx]
+        for value in local_data:
+            true_x.append(value)
+    for node_idx in range(n):
+        local_data = y_split[node_idx]
+        for label in local_data:
+            true_y.append(label)
+
+    true_knn.fit(true_x, true_y)
+    true_pred = true_knn.predict(x_test_dataset)
+    true_baseline = metrics.balanced_accuracy_score(y_test_dataset, true_pred)
+    local_classifiers = []
+    for node_idx in range(n):
+        knn = KNeighborsClassifier(n_neighbors=k)
+        knn.fit(x_split[node_idx], y_split[node_idx])
+        local_classifiers.append(knn)
+
+    y_pred = []
+
+    for sample_id in range(len(y_test_dataset)):
+
+        if DEBUG:
+            print('SAMPLE %d' % (sample_id))
+
+        x_test_sample = x_test_dataset[sample_id].reshape(1, -1)
+        ldv = []
+
+        for node_idx in range(n):
+            node_knn = local_classifiers[node_idx]
+            ldv_i = node_knn.kneighbors(x_test_sample, n_neighbors=k)[0]
+            ldv.append(ldv_i + np.random.laplace(scale=k / eps, size=k))
+
+            print('DIFFERENCE')
+            print(np.linalg.norm(ldv_i - ldv[node_idx]) / np.linalg.norm(ldv_i))
+
+        # instead of multiround algorithm each nodes publish its topk values adding laplacian noise
+        # we publish instead the top k distances adding lap noise
+        # the top-k values are differentially private with Lap(k/eps)
+        # also we can use only one single round
+
+        ldv = np.array(ldv)
+        gdv = ldv.flatten()
+        gdv.sort()
+        gdv = gdv[:k]
+
+        k_point = gdv[-1]
+
+        lcv = []
+
+        for node_idx in range(n):
+            lcv_i = np.zeros((1, len(np.unique(y)))).squeeze().tolist()
+
+            local_knn = local_classifiers[node_idx]
+            ldv_i = local_knn.kneighbors(x_test_sample, n_neighbors=k)
+
+            dists = ldv_i[0].flatten()
+            ids = ldv_i[1].flatten()
+
+            dist_id = 0
+            for dist in dists:
+                if dist <= k_point:
+                    idx = ids[dist_id]
+                    cl = y_split[node_idx][idx]
+                    if DEBUG:
+                        print(node_idx, idx, cl)
+                    lcv_i[cl] += dist
+
+                dist_id += 1
+
+            lcv.append(lcv_i)
+            # local_pred = int(local_knn.predict(x_test_sample))
+            # lcv_i[local_pred] += 1
+            # lcv.append(lcv_i)
+            # lcv_i = local_knn.predict_proba(x_test_sample)
+            # lcv.append(lcv_i)
+            node_idx += 1
+
+        random_values = np.random.randint(100, size=len(np.unique(y)))
+        gcv = np.copy(random_values)
+
+        for lcv_i in lcv:
+            pos = 0
+            for val in lcv_i:
+                gcv[pos] += val
+                pos += 1
+
+        real_gcv = gcv - random_values
+
+        if DEBUG:
+            print('final gcv (what the final node sees) ', gcv)
+            print('random values ', random_values)
+            print('real gcv ', real_gcv)
+
+        cls = np.argmax(real_gcv)
+
+        if DEBUG:
+            print('REAL CLASS: %d\n'
+                  'PREDICTED CLASS: %d' % (y_test_dataset[sample_id], cls))
+
+        y_pred.append(cls)
+    # plot.print_metrics(y_test_dataset, y_pred)
+    return metrics.balanced_accuracy_score(y_test_dataset, y_pred), true_baseline
+
+
 def test_knn(p0=1.0, d=0.75, rounds=10, k=5, n=3):
     '''
 
@@ -220,6 +346,7 @@ def test_knn(p0=1.0, d=0.75, rounds=10, k=5, n=3):
     # x, y = datasets.load_breast_cancer(return_X_y=True)
     # x, y = abalone()
     # x = MinMaxScaler().fit_transform(x)
+    # x = StandardScaler().fit_transform(x)
     randomize = np.random.permutation(len(x))
     x = x[randomize]
     y = y[randomize]
@@ -268,7 +395,7 @@ def test_knn(p0=1.0, d=0.75, rounds=10, k=5, n=3):
             ldv_i = node_knn.kneighbors(x_test_sample, n_neighbors=k)[0]
             ldv.append(ldv_i)
 
-        gdv = [[np.random.uniform(10, 50) for _ in range(k)]]
+        gdv = [[np.random.uniform(100) for _ in range(k)]]
 
         for r in range(rounds):
 
@@ -319,7 +446,7 @@ def test_knn(p0=1.0, d=0.75, rounds=10, k=5, n=3):
             print('REAL TOP K DISTANCES ', real_gdv[:k])
             print('GLOBAL DISTANCE VECTOR ', gdv)
 
-        k_point = gdv[-1]
+        k_point = gdv[0]
 
         lcv = []
 
@@ -583,46 +710,55 @@ def test(p0=1.0, d=0.75, rounds=10, k=5):
 
 PS = np.arange(0.1, 1.1, 0.1)
 DS = np.arange(0.1, 1.1, 0.1)
-ROUNDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-DEBUG = True
-
+ROUNDS = [1, 2, 3, 4, 5]
+DEBUG = False
 scores = defaultdict(list)
 
 p = 1.0
-d = 0.25
+d = 0.9
 
-NODES = [3, 4, 5, 6, 7, 8, 9, 10]
-NEIGHBORS = [3, 5, 7, 9, 11, 13, 15]
+NODES = [3, 5, 7, 9, 13, 15, 17, 19, 21]
+NEIGHBORS = [3, 5, 7, 9, 11, 13, 15, 17, 19]
 baselines = defaultdict(list)
 rounds = {}
-score, true_pred = test_knn(p0=p, d=d, rounds=3
-                            , k=1, n=3)
+score, true_pred = test_knn(p0=p, d=d, rounds=1
+                            , k=5, n=3)
 print('baseline', true_pred)
 print('private knn', score)
 
+ds = [0.25, 0.5, 0.75, 0.9]
 
-def smc_plot():
+
+def smc_plot(p = 1.0, d = 0.25, n=3):
     for n in ROUNDS:
         print(n)
-        for _ in range(100):
+        for _ in range(10):
             score, true_pred = test_knn(p0=p, d=d, rounds=n, k=5, n=3)
             diff = abs(true_pred - score)  # in the paper they measure ABSOLUTE difference
             scores[n].append(diff)
             baselines[n].append(true_pred)
 
-    pickle.dump(scores, open('smc_scores_d_p100_d25.pkl', 'wb'))
+    # pickle.dump(scores, open('smc_scores_d_p100_d25.pkl', 'wb'))
     means = [np.mean(scores[k]) for k in scores]
     dims = [str(r) for r in ROUNDS]
-    plt.plot(dims, means)
+    plt.plot(dims, means, label='d = ' + str(d))
     plt.xlabel('# rounds')
     plt.ylabel('Average Accuracy Difference')
-    plt.title('Private KNN vs Standard KNN\np0 = 10.0, d = 0.25, k = 5')
-    plt.savefig('smc_scores_d_p100_d25.png')
-    # plt.legend()
-    plt.show()
+    plt.title('Private KNN vs Standard KNN\np0 = 1.0, k = 5, n = 3')
+    # plt.savefig('smc_scores_d_p100_d25.png')
+    plt.legend()
+    # plt.show()
 
 
 def plot_together():
     scores = pickle.load(open('smc_scores_rounds_p10_d025'))
 
-# smc_plot()
+
+smc_plot(p = 1.0, d=0.25)
+smc_plot(p = 1.0, d = 0.5)
+smc_plot(p = 1.0, d=0.75)
+smc_plot(p=1.0, d = 0.9)
+plt.savefig('smc_scores_change_d.png')
+plt.show()
+# res, true_res = lap_knn(n=5, k=5, eps=0.1)
+# print(res, true_res)
